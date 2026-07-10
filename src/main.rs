@@ -2,5 +2,5 @@ mod server;
 
 fn main() {
     println!("Hello, world!");
-    server::run();
+    let _ = server::run();
 }
