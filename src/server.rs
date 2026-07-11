@@ -4,7 +4,7 @@ use std::net::{TcpListener, TcpStream};
 use std::str::FromStr;
 
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 enum Command {
     Ping,
     Echo,
@@ -35,21 +35,47 @@ struct MemoryStore {
 
 impl MemoryStore {
     fn handle(&mut self, command: &Command, args: &[String]) -> Result<Option<String>, String> {
-        match command {
+        return match command {
             Command::Ping => {
-                return Ok(Some(format!("PONG")));
+                Ok(Some(format!("PONG")))
             }
-            Command::Echo => {}
+            Command::Echo => {
+              Ok(Some(args.join(" ")))
+            }
             Command::Set => {
                 if args.len() != 2 {
                     return Err(format!("Two arguments expected for this command"));
                 }
+
+                self.store.insert(
+                  String::from(args.get(0).unwrap()),
+                 String::from(args.get(1).unwrap()),
+                );
+
+                Ok(None)
             }
-            Command::Get => {}
-            Command::Del => {}
+            Command::Get => {
+                if args.len() != 1 {
+                    return Err(format!("One argument expected for this command"));
+                }
+
+                let key = args.get(0).unwrap();
+
+                Ok(self.store.get(key).cloned())
+            }
+            Command::Del => {
+                if args.len() != 1 {
+                    return Err(format!("One argument expected for this command"));
+                }
+
+                 let key = args.get(0).unwrap();
+
+                self.store.remove(key);
+
+                Ok(None)
+            }
         }
 
-        Ok(Some(format!("")))
     }
 
     fn new() -> Self {
@@ -78,21 +104,20 @@ fn handle_connection(mut stream: TcpStream, mem_store: &mut MemoryStore) -> io::
     for line in reader.lines() {
         let line = line?;
 
-        if line.len() == 0 {
-            return Err(Error::new(ErrorKind::InvalidInput, "Must provide "));
-        }
-
         let split_lines = line
-            .split(" ")
-            .map(|s| String::from(s))
+            .split_whitespace()
+            .map(String::from)
             .collect::<Vec<String>>();
 
-        let command = Command::from_str(split_lines.get(0).unwrap())
+        let Some((command_name, args)) = split_lines.split_first() else {
+            writeln!(stream, "ERR must provide a command")?;
+            continue;
+        };
+
+        let command = Command::from_str(command_name)
             .map_err(|_| Error::new(ErrorKind::InvalidInput, "Invalid command"))?;
 
-        // mem_store.handle(command, split_lines.get(1).unwrap());
-        let result: Result<Option<String>, String> = mem_store.handle(&command, &split_lines[1..]);
-        if result.is_ok() {}
+        let result: Result<Option<String>, String> = mem_store.handle(&command, args);
 
         if let Result::Ok(Some(res)) = result {
             writeln!(stream, "{res}")?;
