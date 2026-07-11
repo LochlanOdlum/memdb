@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::io::{self, BufRead, BufReader, Error, ErrorKind};
+use std::io::{self, BufRead, BufReader, Error, ErrorKind, Write};
 use std::net::{TcpListener, TcpStream};
 use std::str::FromStr;
+
 
 #[derive(Debug, Eq, Hash, PartialEq)]
 enum Command {
@@ -29,19 +30,31 @@ impl FromStr for Command {
 
 #[derive(Debug)]
 struct MemoryStore {
-    store: HashMap<Command, String>,
+    store: HashMap<String, String>,
 }
 
 impl MemoryStore {
-    fn handle(&mut self, command: Command, val: &str) -> Result<(), String> {
-        self.store.insert(command, String::from(val));
+    fn handle(&mut self, command: &Command, args: &[String]) -> Result<Option<String>, String> {
+        match command {
+            Command::Ping => {
+                return Ok(Some(format!("PONG")));
+            }
+            Command::Echo => {}
+            Command::Set => {
+                if args.len() != 2 {
+                    return Err(format!("Two arguments expected for this command"));
+                }
+            }
+            Command::Get => {}
+            Command::Del => {}
+        }
 
-        Ok(())
+        Ok(Some(format!("")))
     }
 
     fn new() -> Self {
         Self {
-            store: HashMap::<Command, String>::new(),
+            store: HashMap::<String, String>::new(),
         }
     }
 }
@@ -59,28 +72,31 @@ pub fn run() -> io::Result<()> {
     Ok(())
 }
 
-fn handle_connection(stream: TcpStream, mem_store: &mut MemoryStore) -> io::Result<()> {
-    println!("Handling connecton");
-    let reader = BufReader::new(stream);
+fn handle_connection(mut stream: TcpStream, mem_store: &mut MemoryStore) -> io::Result<()> {
+    let reader = BufReader::new(stream.try_clone()?);
 
     for line in reader.lines() {
         let line = line?;
+
+        if line.len() == 0 {
+            return Err(Error::new(ErrorKind::InvalidInput, "Must provide "));
+        }
+
         let split_lines = line
             .split(" ")
             .map(|s| String::from(s))
             .collect::<Vec<String>>();
 
-        if split_lines.len() < 2 {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "Must provide an argument parameter",
-            ));
-        }
-
         let command = Command::from_str(split_lines.get(0).unwrap())
             .map_err(|_| Error::new(ErrorKind::InvalidInput, "Invalid command"))?;
 
-        mem_store.handle(command, split_lines.get(1).unwrap());
+        // mem_store.handle(command, split_lines.get(1).unwrap());
+        let result: Result<Option<String>, String> = mem_store.handle(&command, &split_lines[1..]);
+        if result.is_ok() {}
+
+        if let Result::Ok(Some(res)) = result {
+            writeln!(stream, "{res}")?;
+        }
 
         println!("{}", line);
         println!("{:#?}", mem_store);
